@@ -2,7 +2,9 @@ name: Fix dashboard script
 on:
   push:
     branches: [main]
-    paths: [index.html]
+    paths:
+      - index.html
+      - .github/workflows/fix-dashboard.yml
 permissions:
   contents: write
 jobs:
