@@ -1,0 +1,31 @@
+name: Fix dashboard script
+on:
+  push:
+    branches: [main]
+    paths: [index.html]
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Repair generated dashboard syntax
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+          bad = "function formData(list,teamId){const recent=(list||[]).filter(f=>['FT','AET','PEN','P'].includes(f.fixture?.status?.short)).sort((a,b)=>new Date(b.fixture.date)-new Date(a.fixture.date)).slice(0,10);let w=0,d=0,l=0,gf=0,ga=0,cs=0,btts=0,home=0,away=0;recent.forEach(f=>{const isHome=Number(f.teams?.home?.id)===Number(teamId);const gf0=Number(isHome?f.goals?.home:f.goals?.away);const ga0=Number(isHome?f.goals?.away:f.goals?.home);gf+=gf0||0;ga+=ga0||0;if(ga0===0)cs++;if(gf0>0&&ga0>0)btts++;if(gf0>ga0)w++;else if(gf0===ga0)d++;else l++;if(isHome)home++;else away++});return{recent,w,d,l,gf,ga,cs,btts,avg:g f};}"
+          if bad in s:
+              s = s.replace(bad, "function formData(list,teamId){return formDataFixed(list,teamId);}")
+              p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit repair
+        run: |
+          if git diff --quiet -- index.html; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "fix: repair dashboard script"
+          git push
