@@ -10,6 +10,12 @@ const API_URL = (process.env.API_FOOTBALL_URL || 'https://v3.football.api-sports
 const API_KEY = process.env.API_FOOTBALL_KEY || '';
 const CACHE_TTL = 15 * 60 * 1000;
 const cache = new Map();
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Max-Age': '3600',
+};
 
 const mime = {
   '.html': 'text/html; charset=utf-8',
@@ -23,7 +29,7 @@ const mime = {
 };
 
 function send(res, status, body, type = 'application/json; charset=utf-8') {
-  res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' });
+  res.writeHead(status, { ...corsHeaders, 'Content-Type': type, 'Cache-Control': 'no-store' });
   res.end(typeof body === 'string' ? body : JSON.stringify(body));
 }
 
@@ -60,7 +66,7 @@ async function serveStatic(req, res) {
   }
   try {
     const ext = path.extname(filePath).toLowerCase();
-    res.writeHead(200, { 'Content-Type': mime[ext] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
+    res.writeHead(200, { ...corsHeaders, 'Content-Type': mime[ext] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
     createReadStream(filePath).pipe(res);
   } catch {
     send(res, 404, { error: 'Not found' });
@@ -68,6 +74,13 @@ async function serveStatic(req, res) {
 }
 
 const server = http.createServer(async (req, res) => {
+  if (req.method === 'OPTIONS') {
+    if (req.url.startsWith('/api/') || req.url.startsWith('/sports-api/')) {
+      res.writeHead(200, corsHeaders);
+      res.end();
+      return;
+    }
+  }
   if (req.method !== 'GET') return send(res, 405, { error: 'Method not allowed' });
   if (req.url === '/api/health') return send(res, 200, { ok: true, service: 'football-analytics', apiFootballConfigured: Boolean(API_KEY) });
   if (req.url.startsWith('/sports-api/')) return proxyApi(req, res);
