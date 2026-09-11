@@ -5,6 +5,7 @@ on:
     paths:
       - index.html
       - .github/workflows/fix-dashboard.yml
+  workflow_dispatch:
 permissions:
   contents: write
 jobs:
@@ -12,16 +13,41 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Repair generated dashboard syntax
+      - name: Repair dashboard layout and live data loading
         run: |
           python - <<'PY'
           from pathlib import Path
           p = Path('index.html')
           s = p.read_text(encoding='utf-8')
+
+          replacements = [
+              (
+                  '.leagueBtn{font-size:13px;padding-left:42px;position:relative}.leagueBtn .flag{position:absolute;left:15px;top:10px}',
+                  '.nav .leagueBtn{display:block;width:100%;min-height:40px;font-size:12px;line-height:1.25;padding:10px 8px 10px 44px!important;position:relative;white-space:normal;overflow:visible}.nav .leagueBtn .flag{position:absolute;left:14px;top:50%;transform:translateY(-50%);width:22px;text-align:center;line-height:1;font-size:16px}'
+              ),
+              (
+                  "async function api(path){const r=await fetch(API+path);if(!r.ok){const t=await r.text();throw new Error(t||('HTTP '+r.status))}return r.json()}",
+                  "async function api(path){const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),12000);try{const r=await fetch(API+path,{signal:controller.signal});if(!r.ok){const t=await r.text();throw new Error(t||('HTTP '+r.status))}return r.json()}catch(e){if(e.name==='AbortError')throw new Error('La consulta tardó demasiado. El backend no respondió a tiempo.');throw e}finally{clearTimeout(timer)}}"
+              ),
+              (
+                  "async function loadAllPriority(mode='today'){currentMode=mode;currentKey='all';const d=new Date();if(mode==='yesterday')d.setDate(d.getDate()-1);if(mode==='tomorrow')d.setDate(d.getDate()+1);document.getElementById('agendaTitle').textContent=mode==='yesterday'?'Partidos de ayer':mode==='tomorrow'?'Partidos de mañana':'Partidos de hoy';document.querySelectorAll('.dates button').forEach(b=>b.classList.remove('active'));document.getElementById(mode).classList.add('active');document.getElementById('matches').innerHTML='<div class=\"spinner\">Consultando las 4 ligas prioritarias…</div>';try{const date=isoOffset(d);const calls=Object.values(LEAGUES).map(l=>api(`/sports-api/fixtures?league=${l.id}&season=${season()}&date=${date}&timezone=America/El_Salvador`));const results=await Promise.allSettled(calls);fixtures=results.flatMap(r=>r.status==='fulfilled'?(r.value.response||[]):[]).sort((a,b)=>new Date(a.fixture.date)-new Date(b.fixture.date));document.getElementById('statusText').textContent='API-Football · datos reales';document.getElementById('footStatus').textContent='● Conectado y actualizado';render()}catch(e){document.getElementById('matches').innerHTML=`<div class=\"empty\">No se pudieron cargar los partidos.<br><br>${esc(e.message)}</div>`}}",
+                  "async function loadAllPriority(mode='today'){currentMode=mode;currentKey='all';const d=new Date();if(mode==='yesterday')d.setDate(d.getDate()-1);if(mode==='tomorrow')d.setDate(d.getDate()+1);document.getElementById('agendaTitle').textContent=mode==='yesterday'?'Partidos de ayer':mode==='tomorrow'?'Partidos de mañana':'Partidos de hoy';document.querySelectorAll('.dates button').forEach(b=>b.classList.remove('active'));document.getElementById(mode).classList.add('active');document.getElementById('matches').innerHTML='<div class=\"spinner\">Consultando partidos reales…</div>';try{const date=isoOffset(d);const priorityIds=new Set(Object.values(LEAGUES).map(l=>Number(l.id)));const data=await api(`/sports-api/fixtures?date=${date}&timezone=America/El_Salvador`);let list=(data.response||[]).filter(f=>priorityIds.has(Number(f.league?.id)));if(mode==='today'){try{const live=await api('/sports-api/fixtures?live='+Array.from(priorityIds).join('-'));const byId=new Map(list.map(f=>[Number(f.fixture?.id),f]));(live.response||[]).forEach(f=>{if(priorityIds.has(Number(f.league?.id)))byId.set(Number(f.fixture?.id),f)});list=Array.from(byId.values())}catch(_){}}fixtures=list.sort((a,b)=>new Date(a.fixture.date)-new Date(b.fixture.date));document.getElementById('statusText').textContent='API-Football · datos reales';document.getElementById('footStatus').textContent='● Conectado y actualizado';render()}catch(e){document.getElementById('statusText').textContent='Error de datos';document.getElementById('footStatus').textContent='● Sin respuesta';document.getElementById('matches').innerHTML=`<div class=\"empty\">No se pudieron cargar los partidos.<br><br>${esc(e.message)}</div>`}}"
+              ),
+              (
+                  "async function loadLeague(key,mode){const l=LEAGUES[key];const d=new Date();if(mode==='yesterday')d.setDate(d.getDate()-1);if(mode==='tomorrow')d.setDate(d.getDate()+1);document.getElementById('matches').innerHTML='<div class=\"spinner\">Cargando '+esc(l.name)+'…</div>';try{const data=await api(`/sports-api/fixtures?league=${l.id}&season=${season()}&date=${isoOffset(d)}&timezone=America/El_Salvador`);fixtures=data.response||[];render()}catch(e){document.getElementById('matches').innerHTML=`<div class=\"empty\">No se pudo cargar ${esc(l.name)}.<br>${esc(e.message)}</div>`}}",
+                  "async function loadLeague(key,mode){const l=LEAGUES[key];const d=new Date();if(mode==='yesterday')d.setDate(d.getDate()-1);if(mode==='tomorrow')d.setDate(d.getDate()+1);document.getElementById('matches').innerHTML='<div class=\"spinner\">Cargando '+esc(l.name)+'…</div>';try{const date=isoOffset(d);const data=await api(`/sports-api/fixtures?league=${l.id}&date=${date}&timezone=America/El_Salvador`);fixtures=data.response||[];if(mode==='today'&&!fixtures.length){try{const live=await api(`/sports-api/fixtures?live=${l.id}`);fixtures=live.response||[]}catch(_){}}render()}catch(e){document.getElementById('statusText').textContent='Error de datos';document.getElementById('footStatus').textContent='● Sin respuesta';document.getElementById('matches').innerHTML=`<div class=\"empty\">No se pudo cargar ${esc(l.name)}.<br>${esc(e.message)}</div>`}}"
+              ),
+          ]
+
+          for old, new in replacements:
+              if old in s:
+                  s = s.replace(old, new)
+
           bad = "function formData(list,teamId){const recent=(list||[]).filter(f=>['FT','AET','PEN','P'].includes(f.fixture?.status?.short)).sort((a,b)=>new Date(b.fixture.date)-new Date(a.fixture.date)).slice(0,10);let w=0,d=0,l=0,gf=0,ga=0,cs=0,btts=0,home=0,away=0;recent.forEach(f=>{const isHome=Number(f.teams?.home?.id)===Number(teamId);const gf0=Number(isHome?f.goals?.home:f.goals?.away);const ga0=Number(isHome?f.goals?.away:f.goals?.home);gf+=gf0||0;ga+=ga0||0;if(ga0===0)cs++;if(gf0>0&&ga0>0)btts++;if(gf0>ga0)w++;else if(gf0===ga0)d++;else l++;if(isHome)home++;else away++});return{recent,w,d,l,gf,ga,cs,btts,avg:g f};}"
           if bad in s:
               s = s.replace(bad, "function formData(list,teamId){return formDataFixed(list,teamId);}")
-              p.write_text(s, encoding='utf-8')
+
+          p.write_text(s, encoding='utf-8')
           PY
       - name: Commit repair
         run: |
@@ -29,5 +55,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add index.html
-          git commit -m "fix: repair dashboard script"
+          git commit -m "fix: repair league navigation and live fixture loading"
           git push
