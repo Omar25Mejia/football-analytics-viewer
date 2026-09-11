@@ -22,8 +22,20 @@ const mime = {
   '.ico': 'image/x-icon',
 };
 
+// Headers CORS para todas las rutas API
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Max-Age': '3600',
+};
+
 function send(res, status, body, type = 'application/json; charset=utf-8') {
-  res.writeHead(status, { 'Content-Type': type, 'Cache-Control': 'no-store' });
+  res.writeHead(status, { 
+    'Content-Type': type, 
+    'Cache-Control': 'no-store',
+    ...corsHeaders,
+  });
   res.end(typeof body === 'string' ? body : JSON.stringify(body));
 }
 
@@ -49,7 +61,7 @@ async function proxyApi(req, res) {
 
 async function serveStatic(req, res) {
   const requested = decodeURIComponent(new URL(req.url, `http://${req.headers.host}`).pathname);
-  const relative = requested.replace(/^\/+/, '') || 'index.html';
+  const relative = requested.replace(/^\/*/, '') || 'index.html';
   const safe = path.normalize(relative).replace(/^\.\.(?:[\\/]|$)/, '');
   let filePath = path.join(__dirname, safe);
   try {
@@ -68,6 +80,15 @@ async function serveStatic(req, res) {
 }
 
 const server = http.createServer(async (req, res) => {
+  // Manejar OPTIONS para CORS preflight
+  if (req.method === 'OPTIONS') {
+    if (req.url.startsWith('/api/') || req.url.startsWith('/sports-api/')) {
+      res.writeHead(200, corsHeaders);
+      res.end();
+      return;
+    }
+  }
+
   if (req.method !== 'GET') return send(res, 405, { error: 'Method not allowed' });
   if (req.url === '/api/health') return send(res, 200, { ok: true, service: 'football-analytics', apiFootballConfigured: Boolean(API_KEY) });
   if (req.url.startsWith('/sports-api/')) return proxyApi(req, res);
@@ -75,3 +96,4 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => console.log(`football-analytics listening on ${PORT}`));
+
