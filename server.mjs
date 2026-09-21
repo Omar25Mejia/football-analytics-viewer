@@ -148,7 +148,7 @@ function form(list, teamId) {
   };
 }
 
-function probability(home, away, h2h, prediction) {
+function probability(home, away, h2h, prediction, homeId, awayId) {
   const hp = home.matches ? (home.wins*3 + home.draws) / (home.matches*3) : null;
   const ap = away.matches ? (away.wins*3 + away.draws) / (away.matches*3) : null;
   const ha = home.goalsPerGame, aa = away.goalsPerGame;
@@ -231,7 +231,7 @@ async function analysis(req,res,params) {
     const h2h=hh.status==='fulfilled' ? hh.value.data.response||[] : [];
     const prediction=pred.status==='fulfilled' ? pred.value.data.response?.[0]||null : null;
     const home=form(recentHome,homeId), away=form(recentAway,awayId);
-    const probs=probability(home,away,h2h,prediction);
+    const probs=probability(home,away,h2h,prediction,homeId,awayId);
     const hasHistory=home.matches>=3 && away.matches>=3;
     const status=hasHistory ? 'ok' : 'limited';
     const maxKey=probs.home>=probs.draw&&probs.home>=probs.away?'home':probs.away>=probs.home&&probs.away>=probs.draw?'away':'draw';
