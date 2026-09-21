@@ -169,10 +169,12 @@ function probability(home, away, h2h, prediction) {
   if (meetings.length) {
     let h=0,d=0,a=0;
     for (const m of meetings.slice(0,10)) {
-      const homeId=Number(m.teams?.home?.id), aId=Number(m.teams?.away?.id);
+      const mh=Number(m.teams?.home?.id), ma=Number(m.teams?.away?.id);
       const gh=Number(m.goals?.home), ga=Number(m.goals?.away);
-      if (homeId===Number(home.recent[0]?.teams?.home?.id) || homeId===Number(m.teams?.home?.id)) {
-        if (homeId===Number(m.teams?.home?.id)) { if(gh>ga)h++; else if(gh===ga)d++; else a++; }
+      if (![mh,ma,gh,ga].every(Number.isFinite)) continue;
+      if (mh===Number(home.recent[0]?.teams?.home?.id) || ma===Number(home.recent[0]?.teams?.home?.id)) {
+        const homeIsMatchHome = mh===Number(home.recent[0]?.teams?.home?.id);
+        if (homeIsMatchHome) { if(gh>ga)h++; else if(gh===ga)d++; else a++; }
         else { if(ga>gh)h++; else if(ga===gh)d++; else a++; }
       }
     }
