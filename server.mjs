@@ -198,17 +198,41 @@ function probability(home, away, h2h, prediction, homeId, awayId) {
 }
 
 async function calendar(req, res, params) {
-  const leagueId = Number(params.get('league'));
-  const league = Object.values(LEAGUES).find(x => x.id === leagueId);
-  const season = Number(params.get('season')) || league?.season || seasonForLeague(leagueId);
-  const from = params.get('from'), to = params.get('to');
-  if (!leagueId || !validDate(from) || !validDate(to)) return send(res,400,{error:'Calendar requiere league, from y to válidos.'});
-  try {
-    const {data,headers,cached} = await upstream('/fixtures?'+q({league:leagueId,season,from,to,timezone:'America/El_Salvador'}), CALENDAR_TTL);
-    return send(res,200,{league:{id:leagueId,season,name:league?.name||data.response?.[0]?.league?.name||'Liga'},from,to,results:data.results||0,fixtures:(data.response||[]).map(compactFixture),cached,quota:headers.dailyRemaining});
-  } catch(e) { return send(res,e.status||502,{error:e.message,api:e.data?.errors||null}); }
-}
+  const from = params.get('from');
+  const to = params.get('to');
+  if (!validDate(from) || !validDate(to)) return send(res,400,{error:'Calendar requiere from y to válidos.'});
 
+  const startDate = new Date(from+'T12:00:00Z');
+  const endDate = new Date(to+'T12:00:00Z');
+  const days = Math.round((endDate-startDate)/86400000)+1;
+  if (days < 1 || days > 10) return send(res,400,{error:'El calendario permite una ventana de 1 a 10 días.'});
+
+  const wanted = new Set(Object.values(LEAGUES).map(x=>x.id));
+  const dates = Array.from({length:days},(_,i)=>{
+    const d=new Date(startDate);
+    d.setUTCDate(d.getUTCDate()+i);
+    return d.toISOString().slice(0,10);
+  });
+
+  try {
+    const results = await Promise.allSettled(dates.map(date =>
+      upstream('/fixtures?'+q({date,timezone:'America/El_Salvador'}),15*60*1000)
+    ));
+    const fixtures=[];
+    const failures=[];
+    results.forEach((r,i)=>{
+      if(r.status==='fulfilled'){
+        for(const f of (r.value.data.response||[])){
+          if(wanted.has(Number(f.league?.id))) fixtures.push(compactFixture(f));
+        }
+      } else failures.push({date:dates[i],error:r.reason?.message||'Error'});
+    });
+    const unique=[...new Map(fixtures.map(f=>[f.id,f])).values()].sort((a,b)=>new Date(a.date)-new Date(b.date));
+    return send(res,200,{from,to,results:unique.length,fixtures:unique,leagues:LEAGUES,partial:failures.length>0,failures});
+  } catch(e) {
+    return send(res,e.status||502,{error:e.message,api:e.data?.errors||null});
+  }
+}
 async function analysis(req,res,params) {
   const fixtureId=Number(params.get('fixture'));
   if(!fixtureId) return send(res,400,{error:'Falta fixture.'});
