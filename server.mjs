@@ -242,12 +242,11 @@ async function analysis(req,res,params) {
     if(!match) return send(res,404,{error:'No se encontró el partido.'});
     const homeId=Number(match.teams?.home?.id), awayId=Number(match.teams?.away?.id), leagueId=Number(match.league?.id), season=Number(match.league?.season)||seasonForLeague(leagueId);
 
-    const [hr,ar,hh,pred,stand] = await Promise.allSettled([
+    const [hr,ar,hh,pred] = await Promise.allSettled([
       upstream('/fixtures?'+q({team:homeId,last:10,timezone:'America/El_Salvador'}),ANALYSIS_TTL),
       upstream('/fixtures?'+q({team:awayId,last:10,timezone:'America/El_Salvador'}),ANALYSIS_TTL),
       upstream('/fixtures/headtohead?'+q({h2h:`${homeId}-${awayId}`,last:10,timezone:'America/El_Salvador'}),ANALYSIS_TTL),
-      upstream('/predictions?fixture='+fixtureId,ANALYSIS_TTL),
-      upstream('/standings?'+q({league:leagueId,season}),ANALYSIS_TTL)
+      upstream('/predictions?fixture='+fixtureId,ANALYSIS_TTL)
     ]);
 
     const recentHome=hr.status==='fulfilled' ? hr.value.data.response||[] : [];
@@ -265,7 +264,7 @@ async function analysis(req,res,params) {
       teams:{home:match.teams.home,away:match.teams.away},
       analysis:{status,confidence:hasHistory?'Alta':'Limitada',probabilities:probs,signal,home,away,h2h:h2h.slice(0,10).map(compactFixture),
         apiPrediction:prediction?{winner:prediction.predictions?.winner||null,advice:prediction.predictions?.advice||null,underOver:prediction.predictions?.under_over||null,goals:prediction.predictions?.goals||null}:null},
-      meta:{sources:{recentHome:hr.status,recentAway:ar.status,h2h:hh.status,prediction:pred.status,standings:stand.status},season,leagueId}
+      meta:{sources:{recentHome:hr.status,recentAway:ar.status,h2h:hh.status,prediction:pred.status},season,leagueId}
     });
   } catch(e) { return send(res,e.status||502,{error:e.message,api:e.data?.errors||null}); }
 }
